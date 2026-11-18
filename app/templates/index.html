@@ -29,6 +29,18 @@
 </div>
 
 <div class="card">
+  <h2>按日查看降雨过程目录</h2>
+  <form method="get" action="{{ url_for('day_html') }}">
+    <label>站点 <input type="text" name="station" required></label>
+    <label>日期（UTC） <input type="date" name="date" required></label>
+    <button type="submit">查看目录</button>
+  </form>
+  <p class="muted">过程目录按 UTC 自然日生成：雨量大于 0 的连续可供数小时合成一段，列出起止、累计雨量与编号。
+    等效 API：<code>GET /api/processes?station=站点&amp;date=2026-11-17</code>；
+    编号永久可查：<code>GET /api/process/编号</code>（含替代关联）。</p>
+</div>
+
+<div class="card">
   <h2>站点数据</h2>
   {% if stations %}
   <table>

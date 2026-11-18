@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}过程目录 {{ station }} {{ date }}{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>降雨过程目录：{{ station }} @ {{ date }}（UTC）</h2>
+  <p>
+    <a href="{{ url_for('day_html', station=station, date=prev_date) }}">← 前一日</a> ｜
+    <a href="{{ url_for('day_html', station=station, date=next_date) }}">后一日 →</a> ｜
+    <a href="{{ url_for('processes_api', station=station, date=date) }}">JSON</a>
+  </p>
+  {% if processes %}
+  <table>
+    <tr><th>编号</th><th>开始 (UTC)</th><th>结束 (UTC)</th><th>小时数</th><th>累计雨量 (mm)</th></tr>
+    {% for p in processes %}
+    <tr>
+      <td><a href="{{ url_for('process_html', code=p.code) }}">{{ p.code }}</a></td>
+      <td>{{ p.start_hour|iso }}</td>
+      <td>{{ (p.end_hour + 3600)|iso }}</td>
+      <td>{{ p.hours }}</td>
+      <td>{{ "%.1f"|format(p.rainfall_mm) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">当日无降雨过程（没有雨量大于 0 的连续可供数小时）。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>逐小时雨量</h2>
+  <table>
+    <tr><th>小时 (UTC)</th><th>状态</th><th>雨量 (mm)</th><th>所属过程</th><th></th></tr>
+    {% for h in hours %}
+    <tr class="{{ '' if h.status == 'ok' else 'missing' }}">
+      <td>{{ h.hour_start|iso }}</td>
+      <td>{% if h.status == "ok" %}<span class="badge ok">可供数</span>
+          {% else %}<span class="badge bad">不可供数</span>{% endif %}</td>
+      <td>{{ "%.1f"|format(h.rainfall_mm) if h.rainfall_mm is not none else "—" }}</td>
+      <td>{% if h.process %}<a href="{{ url_for('process_html', code=h.process) }}">{{ h.process }}</a>{% else %}—{% endif %}</td>
+      <td><a href="{{ url_for('report_html', station=station, hour=h.hour_start|iso) }}">详情</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="muted">分段规则：只用可供数小时；雨量大于 0 的连续小时合成一段；零雨量或不可供数小时断开。</p>
+</div>
+
+{% if history %}
+<div class="card">
+  <h2>历史编号（已被替代，保留原结果）</h2>
+  <table>
+    <tr><th>编号</th><th>开始 (UTC)</th><th>结束 (UTC)</th><th>累计雨量 (mm)</th><th>替代批次</th></tr>
+    {% for p in history %}
+    <tr>
+      <td><a href="{{ url_for('process_html', code=p.code) }}">{{ p.code }}</a></td>
+      <td>{{ p.start_hour|iso }}</td>
+      <td>{{ (p.end_hour + 3600)|iso }}</td>
+      <td>{{ "%.1f"|format(p.rainfall_mm) }}</td>
+      <td><a href="{{ url_for('batch_detail', batch_id=p.superseded_batch) }}">#{{ p.superseded_batch }}</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

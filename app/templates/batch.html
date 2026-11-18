@@ -8,8 +8,51 @@
      <span class="badge ok">接受 {{ report.accepted_count }}</span>
      {% if report.rejected_count %}<span class="badge bad">拒绝 {{ report.rejected_count }}</span>
      {% else %}<span class="badge ok">拒绝 0</span>{% endif %}</p>
-  <p class="muted">本批次全部已接受行与批次记录在同一事务中写入；写入失败会整体回滚，不会留下半批新结果。</p>
+  <p class="muted">本批次全部已接受行、批次记录与受影响日期的过程目录变更在同一事务中写入；
+     写入失败会整体回滚，不会留下半批新结果。</p>
 </div>
+
+{% if report.catalog_changes %}
+<div class="card">
+  <h2>过程目录变更（与读数同批生效）</h2>
+  {% for c in report.catalog_changes %}
+  <h3>{{ c.station }} @ {{ c.date }}（UTC）
+    <a href="{{ url_for('day_html', station=c.station, date=c.date) }}">查看当日目录</a></h3>
+  {% if c.kept %}
+  <p>沿用编号（起止与累计雨量未变）：
+    {% for code in c.kept %}<a href="{{ url_for('process_html', code=code) }}">{{ code }}</a>{{ "、" if not loop.last }}{% endfor %}</p>
+  {% endif %}
+  {% if c.created %}
+  <table>
+    <tr><th>新编号</th><th>起止 (UTC)</th><th>小时数</th><th>累计雨量 (mm)</th></tr>
+    {% for p in c.created %}
+    <tr>
+      <td><a href="{{ url_for('process_html', code=p.code) }}">{{ p.code }}</a></td>
+      <td>{{ p.start }} ~ {{ p.end }}</td>
+      <td>{{ p.hours }}</td>
+      <td>{{ "%.1f"|format(p.rainfall_mm) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  {% if c.superseded %}
+  <table>
+    <tr><th>被替代编号（保留原结果）</th><th>原起止 (UTC)</th><th>原累计雨量 (mm)</th><th>直接替代（共有降雨小时）</th></tr>
+    {% for p in c.superseded %}
+    <tr>
+      <td><a href="{{ url_for('process_html', code=p.code) }}">{{ p.code }}</a></td>
+      <td>{{ p.start }} ~ {{ p.end }}</td>
+      <td>{{ "%.1f"|format(p.rainfall_mm) }}</td>
+      <td>{% if p.replacements %}
+          {% for r in p.replacements %}<a href="{{ url_for('process_html', code=r.code) }}">{{ r.code }}</a>（{{ r.shared_hours }}）{{ "、" if not loop.last }}{% endfor %}
+          {% else %}<span class="badge bad">已消失</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
 
 {% if report.rejected %}
 <div class="card">

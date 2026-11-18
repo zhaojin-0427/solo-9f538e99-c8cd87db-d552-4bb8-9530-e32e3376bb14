@@ -14,6 +14,7 @@
   <p>
     <a href="{{ url_for('report_html', station=r.station, hour=prev_hour) }}">← 前一小时</a> ｜
     <a href="{{ url_for('report_html', station=r.station, hour=next_hour) }}">后一小时 →</a> ｜
+    <a href="{{ url_for('day_html', station=r.station, date=r.hour_start[:10]) }}">当日过程目录</a> ｜
     <a href="{{ url_for('hourly_api', station=r.station, hour=r.hour_start) }}">JSON</a>
   </p>
 </div>

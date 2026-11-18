@@ -8,7 +8,47 @@
      <span class="badge ok">接受 {{ batch.accepted_rows }}</span>
      <span class="badge {{ 'bad' if batch.rejected_rows else 'ok' }}">拒绝 {{ batch.rejected_rows }}</span></p>
 </div>
+
+{% if changes %}
 <div class="card">
+  <h2>本批次的过程目录变更</h2>
+  {% for c in changes %}
+  <h3>{{ c.station }} @ {{ c.date }}（UTC）
+    <a href="{{ url_for('day_html', station=c.station, date=c.date) }}">查看当日目录</a></h3>
+  {% if c.created %}
+  <table>
+    <tr><th>新编号</th><th>起止 (UTC)</th><th>小时数</th><th>累计雨量 (mm)</th></tr>
+    {% for p in c.created %}
+    <tr>
+      <td><a href="{{ url_for('process_html', code=p.code) }}">{{ p.code }}</a></td>
+      <td>{{ p.start }} ~ {{ p.end }}</td>
+      <td>{{ p.hours }}</td>
+      <td>{{ "%.1f"|format(p.rainfall_mm) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  {% if c.superseded %}
+  <table>
+    <tr><th>被替代编号（保留原结果）</th><th>原起止 (UTC)</th><th>原累计雨量 (mm)</th><th>直接替代（共有降雨小时）</th></tr>
+    {% for p in c.superseded %}
+    <tr>
+      <td><a href="{{ url_for('process_html', code=p.code) }}">{{ p.code }}</a></td>
+      <td>{{ p.start }} ~ {{ p.end }}</td>
+      <td>{{ "%.1f"|format(p.rainfall_mm) }}</td>
+      <td>{% if p.replacements %}
+          {% for r in p.replacements %}<a href="{{ url_for('process_html', code=r.code) }}">{{ r.code }}</a>（{{ r.shared_hours }}）{{ "、" if not loop.last }}{% endfor %}
+          {% else %}<span class="badge bad">已消失</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>行级明细</h2>
   <table>
     <tr><th>行号</th><th>结果</th><th>说明</th><th>原始内容</th></tr>
     {% for r in rows %}

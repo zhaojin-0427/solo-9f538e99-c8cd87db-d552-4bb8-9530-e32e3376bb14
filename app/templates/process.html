@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}过程 {{ p.code }}{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>降雨过程 {{ p.code }}</h2>
+  <p>站点 <strong>{{ p.station }}</strong> ｜ 日期 {{ p.day_epoch|date }}（UTC）｜
+     状态：{% if p.status == "active" %}<span class="badge ok">当前有效</span>
+     {% else %}<span class="badge bad">已被替代</span>{% endif %}</p>
+  <p>起止 (UTC)：{{ p.start_hour|iso }} ~ {{ (p.end_hour + 3600)|iso }}（共 {{ p.hours }} 小时）｜
+     累计雨量 <strong>{{ "%.1f"|format(p.rainfall_mm) }} mm</strong>（{{ p.total_pulses }} 脉冲）</p>
+  <p class="muted">
+    创建于批次 <a href="{{ url_for('batch_detail', batch_id=p.created_batch) }}">#{{ p.created_batch }}</a>（{{ p.created_at }}）
+    {% if p.status == "superseded" %}
+    ｜ 被批次 <a href="{{ url_for('batch_detail', batch_id=p.superseded_batch) }}">#{{ p.superseded_batch }}</a> 替代（{{ p.superseded_at }}）
+    {% endif %}
+  </p>
+  <p>
+    <a href="{{ url_for('day_html', station=p.station, date=p.day_epoch|date) }}">当日目录</a> ｜
+    <a href="{{ url_for('process_api', code=p.code) }}">JSON</a>
+  </p>
+</div>
+
+{% if p.status == "superseded" %}
+<div class="card">
+  <h2>直接替代过程</h2>
+  {% if successors %}
+  <table>
+    <tr><th>编号</th><th>起止 (UTC)</th><th>累计雨量 (mm)</th><th>共有降雨小时</th><th>状态</th></tr>
+    {% for s in successors %}
+    <tr>
+      <td><a href="{{ url_for('process_html', code=s.code) }}">{{ s.code }}</a></td>
+      <td>{{ s.start_hour|iso }} ~ {{ (s.end_hour + 3600)|iso }}</td>
+      <td>{{ "%.1f"|format(s.rainfall_mm) }}</td>
+      <td>{{ s.shared_hours }}</td>
+      <td>{% if s.status == "active" %}<span class="badge ok">当前有效</span>
+          {% else %}<span class="badge bad">已被替代</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="muted">按共有降雨小时关联：一个旧编号对应多个替代过程为拆分；多个旧编号指向同一过程为合并。</p>
+  {% else %}
+  <p><span class="badge bad">过程已消失</span>：补传/修订后不存在与本过程共享降雨小时的直接替代过程。</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if predecessors %}
+<div class="card">
+  <h2>本过程替代了</h2>
+  <table>
+    <tr><th>编号</th><th>起止 (UTC)</th><th>累计雨量 (mm)</th><th>共有降雨小时</th><th>状态</th></tr>
+    {% for s in predecessors %}
+    <tr>
+      <td><a href="{{ url_for('process_html', code=s.code) }}">{{ s.code }}</a></td>
+      <td>{{ s.start_hour|iso }} ~ {{ (s.end_hour + 3600)|iso }}</td>
+      <td>{{ "%.1f"|format(s.rainfall_mm) }}</td>
+      <td>{{ s.shared_hours }}</td>
+      <td>{% if s.status == "active" %}<span class="badge ok">当前有效</span>
+          {% else %}<span class="badge bad">已被替代</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

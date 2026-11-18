@@ -1,4 +1,4 @@
-"""核心领域逻辑：CSV 解析校验与 UTC 小时降雨量计算。
+"""核心领域逻辑：CSV 解析校验、UTC 小时降雨量计算与日内降雨过程分段。
 
 本模块为纯逻辑，不依赖 Flask / SQLite，便于独立测试。
 
@@ -9,6 +9,8 @@
 - 计数下降按一次 10000 回绕处理：差值 = (末读数 - 初读数) mod 10000。
 - 每脉冲折合 0.2 毫米；任一间隔无可用数据则整小时不可供数。
 - 同一（站点, 设备, 分钟）键只接受更高修订号的记录。
+- 降雨过程按 UTC 自然日划分：只用可供数小时，雨量大于 0 的连续小时合成一段，
+  零雨量或不可供数小时断开。
 """
 from __future__ import annotations
 
@@ -23,6 +25,7 @@ COUNTER_MOD = 10000       # 翻斗计数器量程（0~9999，回绕一次加 100
 INTERVALS_PER_HOUR = 60   # 每小时 60 个相邻分钟间隔
 MINUTE_SECONDS = 60
 HOUR_SECONDS = 3600
+DAY_SECONDS = 86400       # UTC 自然日秒数
 
 DEVICE_PRIMARY = "primary"
 DEVICE_BACKUP = "backup"
@@ -82,6 +85,44 @@ class RowError:
 def iso_utc(epoch: int) -> str:
     """epoch 秒 -> 'YYYY-MM-DDTHH:MM:SSZ'。"""
     return datetime.fromtimestamp(int(epoch), tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def utc_date(epoch: int) -> str:
+    """epoch 秒 -> 'YYYY-MM-DD'（UTC 自然日）。"""
+    return datetime.fromtimestamp(int(epoch), tz=timezone.utc).strftime("%Y-%m-%d")
+
+
+_DATE_RE = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})\s*$")
+
+
+def parse_date(text: str) -> int:
+    """解析 UTC 自然日 'YYYY-MM-DD'，返回当日 00:00Z 的 epoch 秒。"""
+    s = (text or "").strip()
+    m = _DATE_RE.match(s)
+    if not m:
+        raise ValueError(f"日期格式应为 YYYY-MM-DD: {s!r}")
+    try:
+        dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise ValueError(f"日期无效: {s!r}（{exc}）") from exc
+    return int(dt.timestamp())
+
+
+def day_start_of(epoch: int) -> int:
+    """epoch 秒所在 UTC 自然日的起始 epoch（当日 00:00Z）。"""
+    return int(epoch) - (int(epoch) % DAY_SECONDS)
+
+
+def affected_days_for_minute(minute_epoch: int) -> set:
+    """某分钟读数作为间隔端点所影响的 UTC 自然日集合（元素为当日 00:00Z epoch）。
+
+    读数 M 同时是间隔 [M-60, M] 的末点与 [M, M+60] 的起点；整点读数因此影响
+    前后两小时，午夜整点（00:00Z）会影响相邻两日，目录重算须覆盖两日。
+    """
+    hours = {minute_epoch - (minute_epoch % HOUR_SECONDS)}
+    if minute_epoch % HOUR_SECONDS == 0:
+        hours.add(minute_epoch - HOUR_SECONDS)
+    return {day_start_of(h) for h in hours}
 
 
 def parse_minute(text: str) -> int:
@@ -285,3 +326,35 @@ def compute_hour(counters: dict, station: str, hour_start_epoch: int) -> dict:
         "source_counts": source_counts,
         "intervals": intervals,
     }
+
+
+def segment_day(hourly) -> list:
+    """把一个 UTC 自然日的逐小时结果合成降雨过程段。
+
+    hourly: 按时间顺序的 24 个 dict，各含：
+        hour_start (int, 该小时起始 epoch)、ok (bool, 是否可供数)、
+        pulses (int|None, 可供数时的总脉冲)。
+    规则：只用可供数小时；雨量大于 0（脉冲 > 0）的连续小时合成一段；
+    零雨量或不可供数小时断开。
+    返回 [{start_hour, end_hour, hours, total_pulses, rainfall_mm}]，
+    其中 end_hour 为末小时的起始 epoch（过程结束时刻 = end_hour + 3600）。
+    """
+    segments = []
+    cur = None
+    for h in hourly:
+        rainy = bool(h["ok"]) and h["pulses"] is not None and h["pulses"] > 0
+        if rainy:
+            if cur is None:
+                cur = {"start_hour": h["hour_start"], "end_hour": h["hour_start"],
+                       "hours": 0, "total_pulses": 0}
+            cur["end_hour"] = h["hour_start"]
+            cur["hours"] += 1
+            cur["total_pulses"] += h["pulses"]
+        elif cur is not None:
+            segments.append(cur)
+            cur = None
+    if cur is not None:
+        segments.append(cur)
+    for seg in segments:
+        seg["rainfall_mm"] = round(seg["total_pulses"] * PULSE_MM, 1)
+    return segments
